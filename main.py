@@ -14,12 +14,73 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-import webapp2
+import webapp2, jinja2, os
+from google.appengine.ext import db
 
-class MainHandler(webapp2.RequestHandler):
+template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir), autoescape = True)
+
+class Index(webapp2.RequestHandler):
     def get(self):
-        self.response.write('Hello world!')
+        self.redirect("/blog")
+
+class NewPost(webapp2.RequestHandler):
+    def get(self):
+        t = jinja_env.get_template("newpost.html")
+        content = t.render(
+        )
+        self.response.write(content)
+
+    def post(self):
+        title = self.request.get("title")
+        post_body = self.request.get("post_body")
+
+        if title and post_body:
+            post = Posts(title = title, post_body = post_body)
+            post.put()
+            # t = jinja_env.get_template("post.html")
+            # content = t.render(post = post)
+            perma = str(post.key().id())
+            self.redirect('/blog/' + perma )
+        else:
+            error = "You are missing something from your post!"
+            t = jinja_env.get_template("newpost.html")
+            content = t.render(
+            title = title,
+            post_body = post_body,
+            error = error
+            )
+            self.response.write(content)
+
+class Posts(db.Model):
+    title = db.StringProperty(required = True)
+    post_body = db.TextProperty(required = True)
+    created = db.DateTimeProperty(auto_now_add = True)
+
+class RecentPosts(webapp2.RequestHandler):
+    def get(self):
+        query = Posts.all().order("-created")
+        recent_posts = query.fetch(limit = 5)
+
+        t = jinja_env.get_template("frontpage.html")
+        content = t.render(posts = recent_posts
+        )
+        self.response.write(content)
+
+class ViewPostHandler(webapp2.RequestHandler):
+    def get(self, id):
+        unique_post = Posts.get_by_id(int(id))
+        t = jinja_env.get_template("post.html")
+        content = t.render(post = unique_post,
+
+        )
+
+        self.response.write(content)
 
 app = webapp2.WSGIApplication([
-    ('/', MainHandler)
+    ('/', Index),
+    webapp2.Route('/blog/<id:\d+>', ViewPostHandler),
+    ('/blog', RecentPosts),
+    ('/newpost', NewPost)
+
 ], debug=True)
